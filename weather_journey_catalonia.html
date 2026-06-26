@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Dress for the Weather — путь домой</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#11333D; --teal:#0E7C86; --seafoam:#3AAFA9; --amber:#E0913A;
+    --paper:#F4F7F8; --yellow:#F2B705; --good:#1f9d55; --good-bg:#e3f6ea;
+    --bad:#c0392b; --bad-bg:#fdecea;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    font-family:'Nunito',system-ui,sans-serif;
+    color:var(--ink);
+    background:#2b2138;
+    overflow:hidden;
+  }
+  #app{
+    position:relative;
+    width:100%; height:100%;
+    max-width:780px; margin:0 auto;
+    display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  /* sky / ground morphing background */
+  #sky{position:absolute; inset:0; z-index:0; transition:background .9s ease;}
+  #ground{position:absolute; left:0; right:0; bottom:0; height:34%; z-index:0; transition:background .9s ease; border-top:3px solid rgba(255,255,255,.18);}
+  #sun{position:absolute; z-index:0; left:50%; transform:translateX(-50%); transition:bottom .9s ease, opacity .9s ease;}
+  .rainline{position:absolute; top:-10%; width:2px; height:60px; background:rgba(255,255,255,.35); z-index:0; animation:fall linear infinite;}
+  @keyframes fall{0%{transform:translateY(-60px);}100%{transform:translateY(420px);}}
+
+  /* HUD */
+  #hud{
+    position:relative; z-index:5;
+    padding:8px 12px 6px;
+    background:rgba(17,51,61,.55);
+    backdrop-filter:blur(3px);
+    color:#fff;
+  }
+  .hud-row{display:flex; align-items:center; gap:10px;}
+  .score-chip{
+    display:flex; align-items:center; gap:6px;
+    background:var(--yellow); color:var(--ink);
+    font-weight:900; font-size:17px;
+    padding:5px 12px; border-radius:999px;
+    box-shadow:0 2px 0 rgba(0,0,0,.18);
+    white-space:nowrap;
+  }
+  .score-chip.bump{animation:bump .45s ease;}
+  @keyframes bump{0%{transform:scale(1);}35%{transform:scale(1.28);}100%{transform:scale(1);}}
+  .stage-label{font-weight:800; font-size:13px; opacity:.92; margin-left:auto; text-align:right; line-height:1.1;}
+  .journey-wrap{margin-top:7px;}
+  .journey-cap{font-size:11px; font-weight:800; letter-spacing:.04em; opacity:.9; display:flex; justify-content:space-between;}
+  .journey-track{
+    position:relative; height:16px; border-radius:999px;
+    background:rgba(255,255,255,.25); margin-top:3px; overflow:visible;
+  }
+  .journey-fill{height:100%; border-radius:999px; background:linear-gradient(90deg,var(--seafoam),var(--yellow)); width:0; transition:width .6s ease;}
+  .hiker{position:absolute; top:-12px; left:0; transition:left .6s ease; font-size:22px; transform:translateX(-50%);}
+
+  /* stage area */
+  #stage{
+    position:relative; z-index:5;
+    flex:1; overflow-y:auto;
+    padding:14px 14px 22px;
+    display:flex; flex-direction:column;
+    -webkit-overflow-scrolling:touch;
+  }
+  .card{
+    background:rgba(255,255,255,.96);
+    border-radius:20px;
+    padding:16px 16px 18px;
+    box-shadow:0 10px 26px rgba(0,0,0,.28);
+    width:100%; max-width:620px; margin:0 auto;
+  }
+  .eyebrow{display:inline-flex; align-items:center; gap:7px; font-weight:900; font-size:12px; letter-spacing:.12em; color:var(--teal); text-transform:uppercase;}
+  .eyebrow .ng{width:14px; height:14px; border:3px solid var(--yellow); border-radius:2px; display:inline-block;}
+  h1{font-size:23px; margin:6px 0 2px; line-height:1.05; font-weight:900;}
+  h2{font-size:19px; margin:2px 0 8px; line-height:1.1; font-weight:900;}
+  .lead{font-size:14px; color:#39505a; margin:0 0 10px; font-weight:600;}
+  .task{font-size:15px; font-weight:800; margin:2px 0 12px; color:var(--ink);}
+  .scene{font-size:64px; text-align:center; line-height:1; margin:6px 0 12px; user-select:none;}
+  .prompt-en{font-size:20px; font-weight:900; text-align:center; margin:0 0 14px; color:var(--teal);}
+
+  .opts{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
+  @media(min-width:520px){.opts.three{grid-template-columns:repeat(3,1fr);}}
+  .opt{
+    border:2px solid #d8e2e6; background:#fff; color:var(--ink);
+    font-family:inherit; font-weight:800; font-size:17px;
+    padding:13px 8px; border-radius:14px; cursor:pointer;
+    transition:transform .08s, border-color .15s, background .15s;
+  }
+  .opt:active{transform:scale(.97);}
+  .opt.correct{background:var(--good-bg); border-color:var(--good); color:var(--good);}
+  .opt.wrong{background:var(--bad-bg); border-color:var(--bad); color:var(--bad);}
+  .opt:disabled{cursor:default;}
+
+  .tf{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:6px;}
+  .btn{
+    font-family:inherit; font-weight:900; font-size:16px; cursor:pointer;
+    border:none; border-radius:14px; padding:13px 16px;
+    transition:transform .08s, filter .15s;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn-primary{background:var(--teal); color:#fff; box-shadow:0 3px 0 #0a5b63;}
+  .btn-ghost{background:#eef3f4; color:var(--ink);}
+  .btn-yes{background:#eef3f4; color:var(--ink); font-size:18px;}
+  .btn-no{background:#eef3f4; color:var(--ink); font-size:18px;}
+
+  .typebox{display:flex; gap:8px; margin-top:4px;}
+  .typebox input{
+    flex:1; font-family:inherit; font-size:18px; font-weight:800;
+    padding:12px 14px; border:2px solid #d8e2e6; border-radius:14px; outline:none; color:var(--ink);
+  }
+  .typebox input:focus{border-color:var(--teal);}
+  .hint{font-size:13px; color:#7a8a90; font-weight:700; margin-top:8px; text-align:center;}
+
+  /* memory */
+  .mem-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px;}
+  @media(max-width:430px){.mem-grid{gap:6px;}}
+  .mem{
+    aspect-ratio:1/1.05; border-radius:14px; border:2px solid #d8e2e6;
+    background:linear-gradient(135deg,#0E7C86,#3AAFA9); color:#fff;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    font-weight:800; font-size:14px; cursor:pointer; padding:4px;
+    transition:transform .1s; user-select:none;
+  }
+  .mem:active{transform:scale(.96);}
+  .mem.open{background:#fff; color:var(--ink); border-color:var(--teal);}
+  .mem.matched{background:var(--good-bg); color:var(--good); border-color:var(--good); cursor:default;}
+  .mem.miss{background:var(--bad-bg); color:var(--bad); border-color:var(--bad);}
+  .mem .q{font-size:26px;}
+
+  /* sentence builder */
+  .answer-line{
+    min-height:54px; border:2px dashed #c7d2d6; border-radius:14px;
+    padding:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; background:#fbfdfd;
+  }
+  .bank{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;}
+  .tile{
+    font-family:inherit; font-weight:800; font-size:16px; cursor:pointer;
+    border:2px solid var(--teal); background:#fff; color:var(--teal);
+    padding:9px 14px; border-radius:12px; transition:transform .08s;
+  }
+  .tile:active{transform:scale(.95);}
+  .tile.used{opacity:.25; pointer-events:none;}
+  .tile.placed{border-style:solid; background:#eafafa;}
+  .builder-btns{display:flex; gap:8px;}
+
+  /* boss */
+  .boss-wrap{text-align:center;}
+  .boss-emoji{font-size:78px; line-height:1; margin:2px 0; transition:transform .2s;}
+  .boss-emoji.hit{animation:shake .4s;}
+  @keyframes shake{0%,100%{transform:translateX(0);}25%{transform:translateX(-9px) rotate(-4deg);}75%{transform:translateX(9px) rotate(4deg);}}
+  .hp-track{height:18px; border-radius:999px; background:#e7eef0; overflow:hidden; margin:6px auto 14px; max-width:320px; border:2px solid #cdd9dc;}
+  .hp-fill{height:100%; background:linear-gradient(90deg,#7b2d8e,#b04fc6); width:100%; transition:width .4s ease;}
+
+  /* feedback flash */
+  #flash{
+    position:absolute; z-index:30; left:50%; top:46%; transform:translate(-50%,-50%) scale(.7);
+    background:var(--good); color:#fff; font-weight:900; font-size:24px;
+    padding:14px 26px; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.3);
+    opacity:0; pointer-events:none; transition:opacity .18s, transform .18s; text-align:center;
+  }
+  #flash.show{opacity:1; transform:translate(-50%,-50%) scale(1);}
+
+  /* modal (wrong answer, stays until closed) */
+  #modal-bg{position:absolute; inset:0; z-index:40; background:rgba(17,51,61,.5); display:none; align-items:center; justify-content:center; padding:18px;}
+  #modal-bg.show{display:flex;}
+  .modal{
+    background:#fff; border-radius:20px; max-width:380px; width:100%;
+    padding:20px 18px 18px; box-shadow:0 18px 50px rgba(0,0,0,.4); position:relative;
+    border-top:7px solid var(--bad);
+  }
+  .modal .x{position:absolute; top:8px; right:10px; border:none; background:none; font-size:26px; line-height:1; color:#9aa7ab; cursor:pointer; font-weight:900;}
+  .modal h3{margin:2px 0 8px; color:var(--bad); font-size:19px;}
+  .modal p{margin:4px 0; font-size:15px; font-weight:700; color:var(--ink);}
+  .modal .ans{font-size:20px; font-weight:900; color:var(--good); background:var(--good-bg); border-radius:10px; padding:8px 12px; margin:8px 0 0; display:inline-block;}
+  .modal .next{margin-top:14px; width:100%;}
+
+  .center{display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1;}
+  .big-btn{font-size:20px; padding:16px 30px;}
+  .photo-note{font-size:12px; font-weight:800; color:var(--amber); letter-spacing:.02em; margin-top:10px;}
+  .stars{font-size:46px; letter-spacing:6px; margin:8px 0;}
+  .final-score{font-size:40px; font-weight:900; color:var(--teal);}
+  svg.clothing{width:90px; height:90px; display:block; margin:0 auto 12px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sky"></div>
+  <div id="ground"></div>
+  <div id="sun">
+    <svg width="120" height="120" viewBox="0 0 120 120">
+      <g fill="#FFD24A">
+        <circle cx="60" cy="60" r="30"/>
+        <g stroke="#FFD24A" stroke-width="6" stroke-linecap="round">
+          <line x1="60" y1="6" x2="60" y2="22"/><line x1="60" y1="98" x2="60" y2="114"/>
+          <line x1="6" y1="60" x2="22" y2="60"/><line x1="98" y1="60" x2="114" y2="60"/>
+          <line x1="22" y1="22" x2="33" y2="33"/><line x1="87" y1="87" x2="98" y2="98"/>
+          <line x1="98" y1="22" x2="87" y2="33"/><line x1="33" y1="87" x2="22" y2="98"/>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <div id="hud">
+    <div class="hud-row">
+      <div class="score-chip" id="scoreChip">⭐ <span id="scoreVal">0</span></div>
+      <div class="stage-label" id="stageLabel"></div>
+    </div>
+    <div class="journey-wrap">
+      <div class="journey-cap"><span>🏠 Путь домой</span><span id="journeyPct">0%</span></div>
+      <div class="journey-track">
+        <div class="journey-fill" id="journeyFill"></div>
+        <div class="hiker" id="hiker">🚶</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="stage"></div>
+
+  <div id="flash"></div>
+
+  <div id="modal-bg">
+    <div class="modal">
+      <button class="x" id="modalX" aria-label="Закрыть">×</button>
+      <h3 id="modalTitle">Не совсем 😕</h3>
+      <p id="modalText"></p>
+      <div class="ans" id="modalAns"></div>
+      <button class="btn btn-primary next" id="modalNext">Дальше →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------------- STATE ---------------- */
+var score = 0;
+var correct = 0;
+var TOTAL = 49; // 8 + 7 + 9 + 7 + 8 + 10
+var stageIdx = 0;
+var modalCallback = null;
+
+var stageNames = ["Память","Какая погода?","Напиши слово","Собери приказ","Правда или ложь?","Босс: ГРОЗА"];
+
+/* ---------------- DOM ---------------- */
+var $ = function(id){ return document.getElementById(id); };
+var stageEl = $("stage");
+
+/* ---------------- BACKGROUND MORPH ---------------- */
+function lerp(a,b,t){ return Math.round(a+(b-a)*t); }
+function rgb(c){ return "rgb("+c[0]+","+c[1]+","+c[2]+")"; }
+// rainy Berguedà mood -> sunny
+var skyRain=[74,59,99],   skySun=[140,200,235];
+var skyRain2=[58,50,82],  skySun2=[193,231,245];
+var grRain=[55,72,52],    grSun=[120,196,98];
+function paintBg(){
+  var t = Math.min(1, correct/TOTAL);
+  var top = [lerp(skyRain[0],skySun[0],t),lerp(skyRain[1],skySun[1],t),lerp(skyRain[2],skySun[2],t)];
+  var bot = [lerp(skyRain2[0],skySun2[0],t),lerp(skyRain2[1],skySun2[1],t),lerp(skyRain2[2],skySun2[2],t)];
+  var gr  = [lerp(grRain[0],grSun[0],t),lerp(grRain[1],grSun[1],t),lerp(grRain[2],grSun[2],t)];
+  $("sky").style.background = "linear-gradient(180deg,"+rgb(top)+" 0%,"+rgb(bot)+" 100%)";
+  $("ground").style.background = "linear-gradient(180deg,"+rgb(gr)+", "+rgb([Math.max(0,gr[0]-25),Math.max(0,gr[1]-25),Math.max(0,gr[2]-25)])+")";
+  // sun rises
+  $("sun").style.bottom = (24 + t*120) + "px";
+  $("sun").style.opacity = (0.15 + t*0.85).toFixed(2);
+  // rain fades
+  document.querySelectorAll(".rainline").forEach(function(r){ r.style.opacity = (1-t).toFixed(2); });
+}
+function makeRain(){
+  for(var i=0;i<22;i++){
+    var r=document.createElement("div");
+    r.className="rainline";
+    r.style.left=(Math.random()*100)+"%";
+    r.style.animationDuration=(0.5+Math.random()*0.5)+"s";
+    r.style.animationDelay=(Math.random()*1)+"s";
+    $("app").appendChild(r);
+  }
+}
+
+/* ---------------- HUD ---------------- */
+function updateHud(){
+  $("scoreVal").textContent = score;
+  var pct = Math.min(100, Math.round(correct/TOTAL*100));
+  $("journeyPct").textContent = pct+"%";
+  $("journeyFill").style.width = pct+"%";
+  $("hiker").style.left = pct+"%";
+  $("stageLabel").innerHTML = (stageIdx<stageNames.length? "Этап "+(stageIdx+1)+"/6<br>"+stageNames[stageIdx] : "Готово!");
+}
+function addScore(){
+  score += 10; correct++;
+  var chip=$("scoreChip"); chip.classList.remove("bump"); void chip.offsetWidth; chip.classList.add("bump");
+  updateHud(); paintBg();
+}
+
+/* ---------------- FEEDBACK ---------------- */
+function flashCorrect(){
+  var f=$("flash"); f.textContent="ВЕРНО! +10 ⭐️"; f.classList.add("show");
+  setTimeout(function(){ f.classList.remove("show"); }, 1100);
+}
+function showWrong(text, answer, cb){
+  $("modalTitle").textContent = "Не совсем 😕";
+  $("modalText").textContent = text || "Правильный ответ:";
+  $("modalAns").textContent = answer;
+  $("modalAns").style.display = answer ? "inline-block" : "none";
+  modalCallback = cb;
+  $("modal-bg").classList.add("show");
+}
+$("modalX").onclick = $("modalNext").onclick = function(){
+  $("modal-bg").classList.remove("show");
+  var cb=modalCallback; modalCallback=null;
+  if(cb) cb();
+};
+
+/* ---------------- HELPERS ---------------- */
+function norm(s){
+  return (s||"").toLowerCase()
+    .replace(/[.,!?;:]/g,"")
+    .replace(/['’`]/g,"")
+    .replace(/\s+/g," ")
+    .trim()
+    .replace(/^(a |an |the )/,"")
+    .trim();
+}
+function shuffle(a){ a=a.slice(); for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)); var t=a[i];a[i]=a[j];a[j]=t;} return a; }
+function next(){ setTimeout(advance, 1300); }
+function clearStage(){ stageEl.innerHTML=""; stageEl.scrollTop=0; }
+
+/* ---------------- DATA ---------------- */
+var WEATHER = [
+  {w:"sunny",  e:"☀️"},
+  {w:"rainy",  e:"🌧️"},
+  {w:"snowy",  e:"⛄"},
+  {w:"windy",  e:"🌬️"},
+  {w:"cloudy", e:"☁️"},
+  {w:"hot",    e:"🥵"},
+  {w:"cold",   e:"🥶"}
+];
+function weatherEmoji(w){ for(var i=0;i<WEATHER.length;i++) if(WEATHER[i].w===w) return WEATHER[i].e; return ""; }
+
+var SWEATER_SVG = '<svg class="clothing" viewBox="0 0 100 100"><g fill="#0E7C86"><path d="M30 28 L20 40 L10 34 L4 44 L20 56 L28 48 L28 84 Q50 92 72 84 L72 48 L80 56 L96 44 L90 34 L80 40 L70 28 Q50 20 30 28 Z"/></g><path d="M38 30 Q50 40 62 30" fill="none" stroke="#0a5b63" stroke-width="3"/></svg>';
+var RAINCOAT_SVG = '<svg class="clothing" viewBox="0 0 100 100"><g><path d="M50 14 L34 22 L18 40 L26 48 L34 40 L34 86 L66 86 L66 40 L74 48 L82 40 L66 22 Z" fill="#F2B705" stroke="#caa000" stroke-width="2"/><line x1="50" y1="22" x2="50" y2="86" stroke="#caa000" stroke-width="2"/><circle cx="50" cy="14" r="9" fill="#F2B705" stroke="#caa000" stroke-width="2"/></g></svg>';
+
+/* ============================================================
+   STAGE 1 — MEMORY (рус ↔ англ)  : 8 matches
+============================================================ */
+var memPairs = [
+  {en:"sunny",      ru:"солнечно"},
+  {en:"rainy",      ru:"дождливо"},
+  {en:"snowy",      ru:"снежно"},
+  {en:"hot",        ru:"жарко"},
+  {en:"a coat",     ru:"пальто"},
+  {en:"boots",      ru:"сапоги"},
+  {en:"an umbrella",ru:"зонт"},
+  {en:"a sweater",  ru:"свитер"}
+];
+function stageMemory(){
+  clearStage();
+  var card=document.createElement("div"); card.className="card";
+  card.innerHTML =
+    '<span class="eyebrow"><span class="ng"></span> Dress for the Weather</span>'+
+    '<h2>Этап 1. Память 🧠</h2>'+
+    '<p class="lead">Найди пары: английское слово ↔ перевод. Нажми на две карточки.</p>'+
+    '<div class="mem-grid" id="memGrid"></div>';
+  stageEl.appendChild(card);
+
+  var cells=[];
+  memPairs.forEach(function(p,i){
+    cells.push({pair:i, lang:"en", text:p.en});
+    cells.push({pair:i, lang:"ru", text:p.ru});
+  });
+  cells=shuffle(cells);
+  var grid=$("memGrid");
+  var first=null, lock=false, matched=0;
+  cells.forEach(function(c){
+    var d=document.createElement("div"); d.className="mem"; d.innerHTML='<span class="q">?</span>';
+    d.onclick=function(){
+      if(lock || d.classList.contains("matched") || d===first) return;
+      d.classList.add("open"); d.textContent=c.text;
+      if(!first){ first={el:d,c:c}; return; }
+      lock=true;
+      if(first.c.pair===c.pair){
+        d.classList.add("matched"); first.el.classList.add("matched");
+        d.classList.remove("open"); first.el.classList.remove("open");
+        first=null; lock=false; matched++;
+        flashCorrect(); addScore();
+        if(matched===memPairs.length){ next(); }
+      }else{
+        d.classList.add("miss"); first.el.classList.add("miss");
+        var f=first;
+        setTimeout(function(){
+          [d,f.el].forEach(function(x){ x.classList.remove("open","miss"); x.innerHTML='<span class="q">?</span>'; });
+          first=null; lock=false;
+        },800);
+      }
+    };
+    grid.appendChild(d);
+  });
+}
+
+/* ============================================================
+   STAGE 2 — WHAT'S THE WEATHER LIKE?  (6 choices) : 7 questions
+============================================================ */
+var weatherQs = ["sunny","rainy","snowy","windy","cloudy","hot","cold"];
+var wqi=0;
+function stageWeather(){
+  if(wqi>=weatherQs.length){ advance(); return; }
+  clearStage();
+  var ans=weatherQs[wqi];
+  // build 6 options: correct + 5 others
+  var others=shuffle(weatherQs.filter(function(w){return w!==ans;})).slice(0,5);
+  var opts=shuffle(others.concat([ans]));
+  var card=document.createElement("div"); card.className="card";
+  card.innerHTML=
+    '<span class="eyebrow"><span class="ng"></span> Grammar 1</span>'+
+    '<h2>Этап 2. Какая погода? ('+(wqi+1)+'/7)</h2>'+
+    '<p class="lead">Посмотри на картинку. Выбери ответ: <b>It\'s ...</b></p>'+
+    '<div class="scene">'+weatherEmoji(ans)+'</div>'+
+    '<p class="prompt-en">What\'s the weather like?</p>'+
+    '<div class="opts three" id="wOpts"></div>';
+  stageEl.appendChild(card);
+  var box=$("wOpts"); var done=false;
+  opts.forEach(function(w){
+    var b=document.createElement("button"); b.className="opt"; b.textContent="It's "+w+".";
+    b.onclick=function(){
+      if(done) return; done=true;
+      Array.prototype.forEach.call(box.children,function(c){c.disabled=true;});
+      if(w===ans){ b.classList.add("correct"); flashCorrect(); addScore(); wqi++; setTimeout(stageWeather,1300); }
+      else{
+        b.classList.add("wrong");
+        Array.prototype.forEach.call(box.children,function(c){ if(c.textContent==="It's "+ans+".") c.classList.add("correct"); });
+        showWrong("Правильный ответ:", "It's "+ans+".", function(){ wqi++; stageWeather(); });
+      }
+    };
+    box.appendChild(b);
+  });
+}
+
+/* ============================================================
+   STAGE 3 — TYPE THE WORD (2 attempts) : 9 items
+============================================================ */
+var typeItems = [
+  {disp:"🧥", reveal:"a coat",        ok:["coat"]},
+  {disp:"🥾", reveal:"boots",         ok:["boots"]},
+  {disp:SWEATER_SVG, reveal:"a sweater", ok:["sweater"]},
+  {disp:RAINCOAT_SVG, reveal:"a raincoat", ok:["raincoat","rain coat"]},
+  {disp:"☂️", reveal:"an umbrella",   ok:["umbrella"]},
+  {disp:"👖", reveal:"jeans",         ok:["jeans"]},
+  {disp:"🩳", reveal:"shorts",        ok:["shorts"]},
+  {disp:"👟", reveal:"sneakers",      ok:["sneakers"]},
+  {disp:"🩱", reveal:"a bathing suit",ok:["bathing suit","bathingsuit"]}
+];
+var tyi=0;
+function stageType(){
+  if(tyi>=typeItems.length){ advance(); return; }
+  clearStage();
+  var it=typeItems[tyi]; var attempts=0;
+  var visual = it.disp.charAt(0)==="<" ? it.disp : '<div class="scene">'+it.disp+'</div>';
+  var card=document.createElement("div"); card.className="card";
+  card.innerHTML=
+    '<span class="eyebrow"><span class="ng"></span> Vocabulary</span>'+
+    '<h2>Этап 3. Напиши слово ('+(tyi+1)+'/9)</h2>'+
+    '<p class="lead">Что это? Напиши слово по-английски (можно с артиклем).</p>'+
+    visual+
+    '<div class="typebox"><input id="tIn" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="напиши тут..."><button class="btn btn-primary" id="tGo">Проверить</button></div>'+
+    '<p class="hint" id="tHint"></p>';
+  stageEl.appendChild(card);
+  var inp=$("tIn"); inp.focus();
+  function check(){
+    var val=norm(inp.value);
+    if(!val) return;
+    var hit=it.ok.some(function(o){ return norm(o)===val; });
+    if(hit){
+      inp.disabled=true; $("tGo").disabled=true;
+      flashCorrect(); addScore(); tyi++; setTimeout(stageType,1300);
+    }else{
+      attempts++;
+      if(attempts<2){
+        $("tHint").textContent="Почти! Попробуй ещё раз 🙂 (осталась 1 попытка)";
+        inp.select();
+      }else{
+        inp.disabled=true; $("tGo").disabled=true;
+        showWrong("Правильный ответ:", it.reveal, function(){ tyi++; stageType(); });
+      }
+    }
+  }
+  $("tGo").onclick=check;
+  inp.addEventListener("keydown",function(e){ if(e.key==="Enter") check(); });
+}
+
+/* ============================================================
+   STAGE 4 — BUILD THE IMPERATIVE (tiles, 2 attempts) : 7 items
+============================================================ */
+var buildItems = [
+  ["Put on","your","coat"],
+  ["Put on","your","boots"],
+  ["Put on","your","raincoat"],
+  ["Put on","your","sweater"],
+  ["Put on","your","sneakers"],
+  ["Put on","your","shorts"],
+  ["Put on","your","bathing suit"]
+];
+var bi=0;
+function stageBuild(){
+  if(bi>=buildItems.length){ advance(); return; }
+  clearStage();
+  var target=buildItems[bi]; var attempts=0;
+  var sentence=target.join(" ")+".";
+  var card=document.createElement("div"); card.className="card";
+  card.innerHTML=
+    '<span class="eyebrow"><span class="ng"></span> Grammar 2 · Imperatives</span>'+
+    '<h2>Этап 4. Собери приказ ('+(bi+1)+'/7)</h2>'+
+    '<p class="lead">Нажимай на фишки по порядку и собери предложение.</p>'+
+    '<div class="answer-line" id="ansLine"></div>'+
+    '<div class="bank" id="bank"></div>'+
+    '<div class="builder-btns"><button class="btn btn-ghost" id="bReset">Сбросить</button><button class="btn btn-primary" id="bGo" style="flex:1">Проверить</button></div>';
+  stageEl.appendChild(card);
+  var line=$("ansLine"), bank=$("bank");
+  var placed=[]; // array of words in order
+  var tiles=shuffle(target.map(function(w,i){return {w:w,i:i};}));
+  function render(){
+    bank.innerHTML=""; line.innerHTML="";
+    tiles.forEach(function(t){
+      var b=document.createElement("button"); b.className="tile"+(t.used?" used":""); b.textContent=t.w;
+      b.onclick=function(){ if(t.used) return; t.used=true; placed.push(t); render(); };
+      bank.appendChild(b);
+    });
+    placed.forEach(function(t){
+      var b=document.createElement("button"); b.className="tile placed"; b.textContent=t.w;
+      b.onclick=function(){ t.used=false; placed=placed.filter(function(x){return x!==t;}); render(); };
+      line.appendChild(b);
+    });
+  }
+  render();
+  $("bReset").onclick=function(){ tiles.forEach(function(t){t.used=false;}); placed=[]; render(); };
+  $("bGo").onclick=function(){
+    var made=placed.map(function(t){return t.w;});
+    var ok = made.length===target.length && made.every(function(w,i){return w===target[i];});
+    if(ok){
+      $("bGo").disabled=true; $("bReset").disabled=true;
+      Array.prototype.forEach.call(line.children,function(c){c.style.background="var(--good-bg)";c.style.borderColor="var(--good)";c.style.color="var(--good)";});
+      flashCorrect(); addScore(); bi++; setTimeout(stageBuild,1300);
+    }else{
+      attempts++;
+      if(attempts<2){
+        tiles.forEach(function(t){t.used=false;}); placed=[]; render();
+        showWrong("Не тот порядок. Попробуй ещё раз 🙂", "", function(){});
+      }else{
+        $("bGo").disabled=true; $("bReset").disabled=true;
+        showWrong("Правильный порядок:", sentence, function(){ bi++; stageBuild(); });
+      }
+    }
+  };
+}
+
+/* ============================================================
+   STAGE 5 — TRUE / FALSE : 8 items
+============================================================ */
+var tfItems = [
+  {s:"It's hot. Put on your coat.",         t:false, why:"Жарко — пальто не нужно."},
+  {s:"It's rainy. Put on your raincoat.",   t:true,  why:""},
+  {s:"It's snowy. Put on your boots.",      t:true,  why:""},
+  {s:"It's sunny. Put on your bathing suit.",t:true, why:""},
+  {s:"It's cold. Put on your shorts.",      t:false, why:"Холодно — шорты не подходят."},
+  {s:"It's windy. Put on your coat.",       t:true,  why:""},
+  {s:"It's hot. Put on your shorts.",       t:true,  why:""},
+  {s:"It's rainy. Put on your sneakers.",   t:false, why:"Дождь — кроссовки промокнут (лучше boots)."}
+];
+var tfi=0;
+function stageTF(){
+  if(tfi>=tfItems.length){ advance(); return; }
+  clearStage();
+  var it=tfItems[tfi];
+  var card=document.createElement("div"); card.className="card";
+  card.innerHTML=
+    '<span class="eyebrow"><span class="ng"></span> Think · Pair · Share</span>'+
+    '<h2>Этап 5. Правда или ложь? ('+(tfi+1)+'/8)</h2>'+
+    '<p class="lead">Подходит одежда к погоде?</p>'+
+    '<p class="prompt-en">'+it.s+'</p>'+
+    '<div class="tf"><button class="btn btn-yes" id="tfYes">✅ Правда</button><button class="btn btn-no" id="tfNo">❌ Неправда</button></div>';
+  stageEl.appendChild(card);
+  var done=false;
+  function pick(val,btn){
+    if(done) return; done=true;
+    $("tfYes").disabled=true; $("tfNo").disabled=true;
+    if(val===it.t){
+      btn.style.background="var(--good-bg)"; btn.style.color="var(--good)";
+      flashCorrect(); addScore(); tfi++; setTimeout(stageTF,1300);
+    }else{
+      btn.style.background="var(--bad-bg)"; btn.style.color="var(--bad)";
+      var rightLabel = it.t ? "✅ Правда" : "❌ Неправда";
+      showWrong(it.why || "Правильный ответ:", rightLabel, function(){ tfi++; stageTF(); });
+    }
+  }
+  $("tfYes").onclick=function(){ pick(true,this); };
+  $("tfNo").onclick=function(){ pick(false,this); };
+}
+
+/* ============================================================
+   STAGE 6 — BOSS: ГРОЗА (HP bar) : 10 questions
+============================================================ */
+var bossQs = ["sunny","rainy","cold","windy","snowy","cloudy","hot","sunny","rainy","snowy"];
+var bqi=0, bossHP=10, bossMax=10;
+function stageBoss(){
+  if(bqi>=bossQs.length){ advance(); return; }
+  if(bossHP<=0){ advance(); return; }
+  clearStage();
+  var ans=bossQs[bqi];
+  var others=shuffle(weatherQs.filter(function(w){return w!==ans;})).slice(0,3);
+  var opts=shuffle(others.concat([ans]));
+  var defeated = bossHP<=3;
+  var card=document.createElement("div"); card.className="card boss-wrap";
+  card.innerHTML=
+    '<span class="eyebrow"><span class="ng"></span> Финальный босс</span>'+
+    '<h2>Этап 6. ГРОЗА ⚡ ('+(bqi+1)+'/10)</h2>'+
+    '<div class="boss-emoji" id="bossE">'+(defeated?"⛅":"🌩️")+'</div>'+
+    '<div class="hp-track"><div class="hp-fill" id="hpFill" style="width:'+(bossHP/bossMax*100)+'%"></div></div>'+
+    '<p class="lead">Верный ответ бьёт грозу −1 ❤️. Ошибка — гроза лечится +1 ❤️.</p>'+
+    '<p class="prompt-en">What\'s the weather like? '+weatherEmoji(ans)+'</p>'+
+    '<div class="opts" id="bOpts"></div>';
+  stageEl.appendChild(card);
+  var box=$("bOpts"); var done=false;
+  opts.forEach(function(w){
+    var b=document.createElement("button"); b.className="opt"; b.textContent="It's "+w+".";
+    b.onclick=function(){
+      if(done) return; done=true;
+      Array.prototype.forEach.call(box.children,function(c){c.disabled=true;});
+      if(w===ans){
+        b.classList.add("correct");
+        bossHP=Math.max(0,bossHP-1);
+        $("hpFill").style.width=(bossHP/bossMax*100)+"%";
+        var be=$("bossE"); be.classList.add("hit");
+        flashCorrect(); addScore(); bqi++;
+        setTimeout(function(){
+          if(bqi>=bossQs.length || bossHP<=0) advance(); else stageBoss();
+        },1300);
+      }else{
+        b.classList.add("wrong");
+        Array.prototype.forEach.call(box.children,function(c){ if(c.textContent==="It's "+ans+".") c.classList.add("correct"); });
+        bossHP=Math.min(bossMax,bossHP+1);
+        $("hpFill").style.width=(bossHP/bossMax*100)+"%";
+        showWrong("Гроза вылечилась! Правильный ответ:", "It's "+ans+".", function(){ bqi++; stageBoss(); });
+      }
+    };
+    box.appendChild(b);
+  });
+}
+
+/* ============================================================
+   FINAL
+============================================================ */
+function stageFinal(){
+  clearStage(); stageIdx=6; updateHud();
+  var max=TOTAL*10; // 490
+  var stars = score>=430?3 : score>=320?2 : score>=180?1 : 0;
+  var starStr = "⭐".repeat(stars)+"☆".repeat(3-stars);
+  var msg = stars===3?"Идеально! Ты дома и сухой! 🏠☀️" : stars===2?"Отлично! Почти не промок!" : stars===1?"Хорошо! Дошёл до дома." : "Дошёл! В следующий раз будет суше 🙂";
+  var card=document.createElement("div"); card.className="card center";
+  card.innerHTML=
+    '<span class="eyebrow"><span class="ng"></span> Dress for the Weather</span>'+
+    '<h1>Ты дома! 🏠</h1>'+
+    '<div class="stars">'+starStr+'</div>'+
+    '<p class="lead" style="text-align:center">'+msg+'</p>'+
+    '<div class="final-score">'+score+' / '+max+' ⭐</div>'+
+    '<p class="photo-note">Berguedà, Catalonia, Spain</p>'+
+    '<button class="btn btn-primary big-btn" id="again" style="margin-top:16px">↺ Сыграть снова</button>';
+  stageEl.appendChild(card);
+  $("again").onclick=restart;
+}
+
+/* ---------------- FLOW ---------------- */
+var stages=[stageMemory,stageWeather,stageType,stageBuild,stageTF,stageBoss,stageFinal];
+function advance(){
+  stageIdx++;
+  updateHud();
+  if(stageIdx<stages.length) stages[stageIdx]();
+}
+function restart(){
+  score=0; correct=0; stageIdx=0; wqi=0; tyi=0; bi=0; tfi=0; bqi=0; bossHP=10;
+  updateHud(); paintBg(); stageIntro();
+}
+
+/* ---------------- INTRO ---------------- */
+function stageIntro(){
+  clearStage();
+  var card=document.createElement("div"); card.className="card center";
+  card.innerHTML=
+    '<span class="eyebrow"><span class="ng"></span> VALUE · Dress for the Weather</span>'+
+    '<h1>Путь домой 🌧️→☀️</h1>'+
+    '<p class="lead" style="text-align:center; max-width:440px">Ты гуляешь по полям Каталонии (как на фото), и погода всё время меняется. '+
+    'Отвечай правильно — небо проясняется, и ты идёшь домой! ☀️🏠</p>'+
+    '<p class="lead" style="text-align:center"><b>6 этапов · ~50 минут.</b></p>'+
+    '<p class="photo-note">Berguedà, Catalonia, Spain</p>'+
+    '<button class="btn btn-primary big-btn" id="start" style="margin-top:16px">▶ Поехали!</button>';
+  stageEl.appendChild(card);
+  $("start").onclick=function(){ stages[0](); stageIdx=0; updateHud(); };
+}
+
+/* ---------------- INIT ---------------- */
+makeRain();
+updateHud();
+paintBg();
+stageIntro();
+</script>
+</body>
+</html>
